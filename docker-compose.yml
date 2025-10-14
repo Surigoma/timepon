@@ -14,3 +14,5 @@ services:
     volumes:
       - ./timepon.php:/var/www/html/index.php
       - data:/var/www/html/data/:rw
+volumes:
+  data:
