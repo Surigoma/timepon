@@ -1,4 +1,4 @@
-﻿# カンファレンスタイマー「TIME-PON」
+# カンファレンスタイマー「TIME-PON」
 
 ## 概要
 「TIME-PON」はカンファレンスやプレゼンテーションなどの場で、遠隔操作で講演者に残り時間を表示したり、カンペを出すための Web アプリケーションです。  
@@ -19,12 +19,15 @@
 ---
 
 ## 設置方法
+### Basic
 1. 本ファイルを Web サーバーの公開ディレクトリに配置してください（例: `/public_html/timepon.php` または `index.php` 等）。  
 2. 同階層に `data/` が無い場合は自動作成されます。手動作成時は **0775 以上の書込権限** を付与してください。  
    - 直接アクセス対策として `data/` を直リンク不可にすることを推奨（例: `.htaccess` で `Deny from all`）。  
    - もしくは公開領域外に移し、`id_to_file()` のパスを変更してください。  
 3. PHP 8 以上推奨。排他制御／ロック（flock）が使用できる環境を推奨。
-
+### Docker
+1. Dockerをインストールします。
+2. `docker compose up -d` を実行する。
 ---
 
 ## 使い方
@@ -89,3 +92,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
+## Forkからの改変ポイント
+1. Docker対応 ( `docker-compose.yml` および `Dockerfile` )
+2. phpの文字エンコードを `UTF-8 with BOM` から `UTF-8` に変換 (PHPのheaderが動かなくなるため)
+3. Nginxのリバプロ対応のための変更 ( `X-Forwarded-Proto` の対応)

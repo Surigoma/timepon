@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 // SPDX-License-Identifier: MIT
 /* =========================================================
  * カンファレンスタイマー 「TIME-PON」
@@ -67,6 +67,9 @@
 
 ini_set('display_errors', 0);
 date_default_timezone_set('Asia/Tokyo');
+if ((empty($_SERVER['HTTPS']) || $_SERVER['HTTPS'] == 'off') && (!empty($_SERVER['HTTP_X_FORWARDED_PROTO']) && strtolower($_SERVER['HTTP_X_FORWARDED_PROTO']) === 'https')) {
+  $_SERVER["HTTPS"] = "on";
+}
 if (!headers_sent()) {
     header('X-Content-Type-Options: nosniff');
     header('Referrer-Policy: strict-origin-when-cross-origin');
