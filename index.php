@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 /* =========================================================
  * カンファレンスタイマー 「TIME-PON」
- * バージョン 1.0.1
+ * バージョン 1.0.1 + surigoma-edit
  * 
   * 【概要】
  * 1) カンファレンスやプレゼンテーションなどの場で、遠隔操作で講演者に残り時間を表示したり、カンペを出すための Web アプリケーションです。  
@@ -38,7 +38,7 @@
  * - 保存データ：持ち時間・警告設定・カンペ・ステージ状態・adminKey が data/ 配下のJSONに保存されます。
  *   個人情報や機微情報はカンペに入力しないでください。
  *   パーミッションの目安は dir=0775, file=0664（umask 007）です。
- * - レート制限：作成10件/分、HB 300件/分、書き込み120件/分（IP単位）。429/エラー相当の応答が出たら間隔を空けて再試行してください。
+ * - レート制限：作成10件/分、HB 1200件/分、書き込み120件/分（IP単位）。429/エラー相当の応答が出たら間隔を空けて再試行してください。
  * - 免責：MITライセンス・無保証です。本番利用前に各自の環境・要件に合わせて十分なテストを行ってください。
  *
  * 【ライセンス】
@@ -74,7 +74,7 @@ if (!headers_sent()) {
     header('X-Content-Type-Options: nosniff');
     header('Referrer-Policy: strict-origin-when-cross-origin');
     header('X-Frame-Options: DENY');
-    header("Content-Security-Policy: default-src 'self'; connect-src 'self'; img-src 'self' data: https://api.qrserver.com; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'; object-src 'none'; upgrade-insecure-requests;");
+    header("Content-Security-Policy: default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; base-uri 'none'; frame-ancestors 'none'; form-action 'self'; object-src 'none'; upgrade-insecure-requests;");
     header('Permissions-Policy: accelerometer=(), autoplay=(), camera=(), clipboard-read=(), clipboard-write=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()');
     header('Cross-Origin-Opener-Policy: same-origin');
     header('Cross-Origin-Resource-Policy: same-origin');
@@ -120,8 +120,8 @@ function load_state($id){
             'id'=>$id,
             'state'=>'idle',
             'durationSec'=>2400,
-            'warn1Min'=>10,
-            'warn2Min'=>5,
+            'warn1Sec'=>10,
+            'warn2Sec'=>5,
             'startedAtMs'=>0,
             'pausedAccumMs'=>0,
             'pausedAtMs'=>0,
@@ -140,8 +140,8 @@ function load_state($id){
     $j = @file_get_contents($file);
     $d = @json_decode($j, true);
     if (!is_array($d)) $d = [];
-    if (!isset($d['warn1Min']) && isset($d['warnSec'])) $d['warn1Min'] = max(0, intval($d['warnSec']/60));
-    if (!isset($d['warn2Min'])) $d['warn2Min'] = 5;
+    if (!isset($d['warn1Sec']) && isset($d['warnSec'])) $d['warn1Sec'] = max(0, intval($d['warnSec']));
+    if (!isset($d['warn2Sec'])) $d['warn2Sec'] = 5;
     if (!isset($d['colors']) || !is_array($d['colors'])) {
         $d['colors'] = ['n'=>'#1e293b','w1'=>'#facc15','w2'=>'#ef4444'];
     } else {
@@ -154,8 +154,8 @@ function load_state($id){
         'id'=>$id,
         'state'=>'idle',
         'durationSec'=>2400,
-        'warn1Min'=>10,
-        'warn2Min'=>5,
+        'warn1Sec'=>10,
+        'warn2Sec'=>5,
         'startedAtMs'=>0,
         'pausedAccumMs'=>0,
         'pausedAtMs'=>0,
@@ -215,7 +215,7 @@ function throttle_get_hb(): void {
     $dir = dirname(id_to_file('000000')) . '/_ip';
     if (!is_dir($dir)) { @mkdir($dir, 0775, true); }
     $f = $dir . '/r_' . $ip . '.json';
-    $now = time(); $win = 60; $max = 300;
+    $now = time(); $win = 60; $max = 1200;
     $d = @json_decode(@file_get_contents($f), true) ?: ['ts'=>0,'cnt'=>0];
     if ($now - (int)$d['ts'] > $win) { $d = ['ts'=>$now,'cnt'=>0]; }
     $d['cnt']++;
@@ -297,8 +297,8 @@ if ($act === 'create' && $_SERVER['REQUEST_METHOD']==='POST') {
     $id = gen_unique_id(6);
     $st = load_state($id);
     $st['durationSec'] = 40*60;
-    $st['warn1Min'] = 10;
-    $st['warn2Min'] = 5;
+    $st['warn1Sec'] = 10;
+    $st['warn2Sec'] = 5;
     $st['state'] = 'idle';
     $st['startedAtMs'] = 0;
     $st['pausedAccumMs'] = 0;
@@ -413,13 +413,13 @@ if ($act === 'setSettings' && $_SERVER['REQUEST_METHOD']==='POST') {
         }
     }
     if (!hash_equals((string)$st['adminKey'], (string)$kPost)) { json_out(['ok'=>false,'error'=>'forbidden']); }
-    $durMin   = min(720, max(1, (int)($_POST['durMin']   ?? ceil($st['durationSec']/60))));
-    $warn1Min = min($durMin, max(0, (int)($_POST['warn1Min'] ?? $st['warn1Min'])));
-    $warn2Min = min($durMin, max(0, (int)($_POST['warn2Min'] ?? $st['warn2Min'])));
+    $durSec   = min(720, max(1, (int)($_POST['durSec']   ?? ceil($st['durationSec']))));
+    $warn1Sec = min($durSec, max(0, (int)($_POST['warn1Sec'] ?? $st['warn1Sec'])));
+    $warn2Sec = min($durSec, max(0, (int)($_POST['warn2Sec'] ?? $st['warn2Sec'])));
     $autoPrompt = isset($_POST['autoPrompt']) ? (($_POST['autoPrompt']=='1'||strtolower((string)$_POST['autoPrompt'])==='true') ? true : false) : ($st['autoPrompt'] ?? true);
-    $st['durationSec'] = $durMin * 60;
-    $st['warn1Min']    = $warn1Min;
-    $st['warn2Min']    = $warn2Min;
+    $st['durationSec'] = $durSec;
+    $st['warn1Sec']    = $warn1Sec;
+    $st['warn2Sec']    = $warn2Sec;
     $st['autoPrompt']  = $autoPrompt;
     $hex = '/^#[0-9A-Fa-f]{6}$/';
     $cn = $_POST['cN'] ?? null;
@@ -807,6 +807,10 @@ button.danger {
   border:1px solid #334155;
   border-radius:12px;
   background:#fff;
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 .langSwitch {
   position:fixed;
@@ -1201,6 +1205,7 @@ select:focus{
 .tO{ color: var(--o) }
 .tR{ color: var(--r, #b91c1c) }
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" integrity="sha512-CNgIRecGo7nphbeZ04Sc13ka07paqdeTu0WR1IM4kNcpmBAUSHSQX0FslNhTDadL4O5SAGapGt4FodqL8My0mA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <div id="langSwitch" class="langSwitch" role="group" aria-label="Language">
   <input id="langChk" type="checkbox" aria-label="Toggle English/Japanese">
   <label class="switch" for="langChk">
@@ -1261,7 +1266,7 @@ select:focus{
       </div>
       <div class="card stick" id="qrCard" style="display:none;text-align:center">
         <h3 data-i18n="qrTitle">演台用QR</h3>
-        <img id="qrImg" alt="QR" referrerpolicy="no-referrer">
+        <div style="display:flex; width: 100%; justify-content: center; align-items: center;"><div id="qrImg" alt="QR"></div></div>
         <div style="margin-top:20px"><span data-i18n="labelURL">URL:</span> <a id="stageLink" target="_blank" rel="noopener"></a></div>
         <div class="muted" style="margin-top:6px" data-i18n="qrHelp">※ スマートフォン、タブレットでQRを読むと、タイマーが表示されます。</div>
       </div>
@@ -1315,20 +1320,20 @@ select:focus{
           <div class="row formRow">
             <label>
               <span data-i18n="labelDuration">持ち時間</span>
-              <input id="adur" type="number" min="1" value="40">
-              <span data-i18n="labelMin">分</span>
+              <input id="adur" type="number" min="1" value="180">
+              <span data-i18n="labelMin">秒</span>
               <input id="cN" type="color" class="cp" value="#1e293b" title="通常色（背景）">
             </label>
             <label>
               <span data-i18n="labelWarn1">第1警告</span>
-              <input id="aw1" type="number" min="0" value="10">
-              <span data-i18n="labelBefore">分前</span>
+              <input id="aw1" type="number" min="0" value="60">
+              <span data-i18n="labelBefore">秒前</span>
               <input id="c1" type="color" class="cp" value="#facc15" title="第1警告色（黄）">
             </label>
             <label>
               <span data-i18n="labelWarn2">第2警告</span>
-              <input id="aw2" type="number" min="0" value="5">
-              <span data-i18n="labelBefore">分前</span>
+              <input id="aw2" type="number" min="0" value="30">
+              <span data-i18n="labelBefore">秒前</span>
               <input id="c2" type="color" class="cp" value="#ef4444" title="第2警告色（朱）">
             </label>
             <button id="saveSettings" class="secondary pushR" data-i18n="saveSettings">設定保存</button>
@@ -1487,14 +1492,14 @@ const I18N = {
     lblNow: '現在時刻',
     lblNowDate: '日付',
     labelDuration: '持ち時間',
-    labelMin: '分',
+    labelMin: '秒',
     labelWarn1: '第1警告',
     labelWarn1Tail: '分前（緑）',
     labelWarn2: '第2警告',
     labelWarn2Tail: '分前（オレンジ）',
     clockHint: '※ 例：第1=10、第2=5 →「10分前に緑」「5分前にオレンジ」「0で赤」',
     autoPromptSwitch: '警告時間で自動カンペ', 
-    labelBefore: '分前',
+    labelBefore: '秒前',
     autoPromptSwitchLong: '警告時間に自動でカンペを送出する',
     onlyPromptLabel: 'タイマーを消してカンペのみ表示',
     state_idle: '待機',
@@ -1516,7 +1521,7 @@ const I18N = {
     statusTrying: '送信試行中',
     statusOffline: '演台がオフラインのため表示できません',
     statusNone: 'カンペは表示されていません',
-    autoMinLeft: '残り{n}分',
+    autoSecLeft: '残り{n}秒',
     remainPrefix: '残り',
     minUnit: '分',
     secUnit: '秒',
@@ -1594,7 +1599,7 @@ const I18N = {
     labelWarn2Tail: 'min (orange)',
     clockHint: 'Ex: 10 & 5 → 10m=green, 5m=orange, 0=red',
     autoPromptSwitch: 'Auto prompt at warnings',
-    labelBefore: 'min before',
+    labelBefore: 'sec before',
     autoPromptSwitchLong: 'Send prompt automatically at warning times',
     onlyPromptLabel: 'Hide timer and show prompt only',
     state_idle: 'idle',
@@ -1616,7 +1621,7 @@ const I18N = {
     statusTrying: 'Sending…',
     statusOffline: 'Cannot display: stage is offline',
     statusNone: 'Prompt not shown',
-    autoMinLeft: '{n} minutes remaining',
+    autoSecLeft: '{n} seconds remaining',
     remainPrefix: 'Rem.',
     minUnit: 'm',
     secUnit: 's',
@@ -1647,8 +1652,8 @@ function t(key, params){
   let s = (I18N[LANG] && I18N[LANG][key]) || key;
   if (params && typeof params.n !== 'undefined'){
     const n = Number(params.n);
-    if (LANG === 'en' && key === 'autoMinLeft'){
-      s = (n === 1) ? '{n} minute remaining' : '{n} minutes remaining';
+    if (LANG === 'en' && key === 'autoSecLeft'){
+      s = (n === 1) ? '{n} second remaining' : '{n} seconds remaining';
     }
     s = s.replace('{n}', String(n));
   }
@@ -1768,8 +1773,14 @@ function renderRoomHeader(){
 }
 function renderQr(id){
   const stageURL = `${BASE_URL}?id=${encodeURIComponent(id)}&lang=${encodeURIComponent(LANG)}`;
-  const qrAPI = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&margin=10&data=' + encodeURIComponent(stageURL);
-  el('qrImg').src = qrAPI;
+  var qrcode = new QRCode("qrImg", {
+      text: stageURL,
+      width: 256 - 24,
+      height: 256 - 24,
+      colorDark : "#000000",
+      colorLight : "#ffffff",
+      correctLevel : QRCode.CorrectLevel.H
+  });
   el('stageLink').textContent = stageURL; el('stageLink').href = stageURL;
   el('qrCard').style.display = 'block';
 }
@@ -1813,12 +1824,12 @@ async function parseJSONorThrowSS(res){
 }
 el('saveSettings').onclick = async ()=>{
     if (!A_id){ alert(t('errOpenFirst')); return; }
-    const durMin   = Math.max(1, Number(el('adur').value)||40);
-    const warn1Min = Math.max(0, Number(el('aw1').value)||10);
-    const warn2Min = Math.max(0, Number(el('aw2').value)||5);
+    const durSec   = Math.max(1, Number(el('adur').value)||40);
+    const warn1Sec = Math.max(0, Number(el('aw1').value)||10);
+    const warn2Sec = Math.max(0, Number(el('aw2').value)||5);
     const fd = new FormData();
     fd.append('act','setSettings'); fd.append('id',A_id);
-    fd.append('durMin',durMin); fd.append('warn1Min',warn1Min); fd.append('warn2Min',warn2Min);
+    fd.append('durSec',durSec); fd.append('warn1Sec',warn1Sec); fd.append('warn2Sec',warn2Sec);
     fd.append('autoPrompt', (document.getElementById('aap')?.checked ? '1' : '0'));
     const k = ADMIN_KEY || localStorage.getItem('timepon.k.' + A_id) || '';
     if (k) fd.append('k', k);
@@ -1874,22 +1885,25 @@ function remainFromState(st){
     return st.durationSec||0;
   }
 }
+var globalMaybeAutoTimer = null;
 function maybeAutoPrompt(remain){
   if (!A_state) return;
   if (A_state.autoPrompt === false) return;
-  const w1 = (A_state.warn1Min||0)*60;
-  const w2 = (A_state.warn2Min||0)*60;
+  const w1 = (A_state.warn1Sec||0);
+  const w2 = (A_state.warn2Sec||0);
   if (A_lastRemainSec!=null){
     if (!A_auto1Sent && A_lastRemainSec>w1 && remain<=w1 && w1>0){
-      const text = t('autoMinLeft', {n: A_state.warn1Min});
+      const text = t('autoSecLeft', {n: A_state.warn1Sec});
       cmd('message', {text});
-      setTimeout(()=>{ cmd('message', {text:''}); }, 30000);
+      if (globalMaybeAutoTimer != null) { clearTimeout(globalMaybeAutoTimer); }
+      globalMaybeAutoTimer = setTimeout(()=>{ cmd('message', {text:''}); globalMaybeAutoTimer = null; }, 10000);
       A_auto1Sent = true;
     }
     if (!A_auto2Sent && A_lastRemainSec>w2 && remain<=w2 && w2>0){
-      const text = t('autoMinLeft', {n: A_state.warn2Min});
+      const text = t('autoSecLeft', {n: A_state.warn2Sec});
       cmd('message', {text});
-      setTimeout(()=>{ cmd('message', {text:''}); }, 30000);
+      if (globalMaybeAutoTimer != null) { clearTimeout(globalMaybeAutoTimer); }
+      globalMaybeAutoTimer = setTimeout(()=>{ cmd('message', {text:''}); globalMaybeAutoTimer = null; }, 10000);
       A_auto2Sent = true;
     }
   }
@@ -1913,9 +1927,9 @@ function syncTopRowHeights(){
 function adminRender(){
   if (!A_state) return;
   if (!A_loadedOnce){
-    el('adur').value = Math.max(1, Math.round((A_state.durationSec||2400)/60));
-    el('aw1').value  = A_state.warn1Min ?? 10;
-    el('aw2').value  = A_state.warn2Min ?? 5;
+    el('adur').value = Math.max(1, Math.round((A_state.durationSec||2400)));
+    el('aw1').value  = A_state.warn1Sec ?? 10;
+    el('aw2').value  = A_state.warn2Sec ?? 5;
     const aap = document.getElementById('aap');
     if (aap) aap.checked = (A_state.autoPrompt !== false);
     A_loadedOnce = true;
@@ -1932,8 +1946,8 @@ function adminRender(){
       const an = el('anow'); if (an) an.textContent = `${hh}:${mm}:${ss}`;
       const ad = el('anowdate'); if (ad) ad.textContent = now.toLocaleDateString();
   })();
-  const w1 = (A_state.warn1Min || 0) * 60;
-  const w2 = (A_state.warn2Min || 0) * 60;
+  const w1 = (A_state.warn1Sec || 0);
+  const w2 = (A_state.warn2Sec || 0);
   paintAdminRemain(remain, w1, w2);
   el('astarted').textContent = A_state.startedAtMs ? new Date(A_state.startedAtMs).toLocaleString() : '-';
   const seen = A_state.stage?.lastSeen ? Number(A_state.stage.lastSeen)*1000 : 0;
@@ -1996,11 +2010,11 @@ async function cmd(c, extra={}){
     await fetch('?act=set', {method:'POST', body:fd});
 }
 el('start').onclick = ()=>{
-  const durMin = Math.max(1, Number(el('adur').value)||40);
+  const durSec = Math.max(1, Number(el('adur').value)||40);
   A_auto1Sent=false; A_auto2Sent=false; A_lastRemainSec=null;
   const payload = {};
   if (!A_state || A_state.state === 'idle') {
-    payload['durationSec'] = durMin * 60;
+    payload['durationSec'] = durSec;
   }
   cmd('start', payload);
 };
@@ -2058,12 +2072,12 @@ el('sgo').onclick = ()=>{
   openStage(v);
 };
 async function stagePull(){
-  if (!S_id){ setTimeout(stagePull, 1000); return; }
+  if (!S_id){ setTimeout(stagePull, 500); return; }
   try{
     const fd = new FormData();
     fd.append('act','hb');
     fd.append('id', S_id);
-    fd.append('fs','0');
+    fd.append('fs', document.fullscreenEnabled ? "1" : "0");
     const r = await fetch('?act=hb', {method:'POST', body:fd, cache:'no-store'});
     let j = null;
     try {
@@ -2084,7 +2098,7 @@ async function stagePull(){
     }
   }catch(e){
   }
-  setTimeout(stagePull, 1000);
+  setTimeout(stagePull, 500);
 }
 function applyColorsFromState(st){
   const c = st && st.colors;
@@ -2103,10 +2117,10 @@ function applyColorsFromState(st){
     if (elW2 && c.w2) elW2.value = c.w2;
   }
 }
-function paint(remain, warn1Min, warn2Min){
+function paint(remain, warn1Sec, warn2Sec){
   const BG = document.getElementById('bg');
   BG.classList.remove('softflash');
-  const w1 = (warn1Min||0)*60, w2 = (warn2Min||0)*60;
+  const w1 = (warn1Sec||0), w2 = (warn2Sec||0);
   if (remain<=0){
     BG.style.background='var(--r)';
     BG.classList.add('softflash');
@@ -2154,7 +2168,7 @@ function stageRender(){
   const mm = String(now.getMinutes()).padStart(2,'0');
   const ss = String(now.getSeconds()).padStart(2,'0');
   if (sclock) sclock.textContent = `${hh}:${mm}:${ss}`;
-  paint(remain, S_state.warn1Min||10, S_state.warn2Min||5);
+  paint(remain, S_state.warn1Sec||10, S_state.warn2Sec||5);
   const BG = document.getElementById('bg');
   if (BG){
     BG.classList.toggle('flashPulse', !!S_state.flash);
@@ -2171,8 +2185,8 @@ function stageRender(){
   }
   const total = Math.max(1, (S_state.durationSec || 1));
   const remainSec = Math.max(0, remain);
-  const w1 = (S_state.warn1Min || 0) * 60;
-  const w2 = (S_state.warn2Min || 0) * 60;
+  const w1 = (S_state.warn1Sec || 0);
+  const w2 = (S_state.warn2Sec || 0);
   const p1 = Math.max(0, Math.min(100, 100 * (total - w1) / total));
   const p2 = Math.max(0, Math.min(100, 100 * (total - w2) / total));
   const elapsedPct = Math.max(0, Math.min(100, 100 * (total - remainSec) / total));
@@ -2395,8 +2409,8 @@ function mTimerStatus(st){
     if (state==='running')      html = t('multiTimerRunning') + ' / ' + mFmtRemainRich(remain);
     else if (state==='paused')  html = t('multiTimerPaused')  + ' / ' + mFmtRemainRich(remain);
     else                        html = t('multiTimerIdle')    + ' / ' + mFmtRemainRich(remain);
-    const w1 = (st?.warn1Min||0)*60;
-    const w2 = (st?.warn2Min||0)*60;
+    const w1 = (st?.warn1Sec||0);
+    const w2 = (st?.warn2Sec||0);
     let cls = '';
     if (remain <= 0)      cls = 'tR';
     else if (remain <= w2) cls = 'tO';
